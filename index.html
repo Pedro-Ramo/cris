@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Jornada Espacial Reorganizada — p5.js</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+  <script>
+    // Jornada Espacial - Versão organizada
+let nave;
+let estrelas1 = [];
+let estrelas2 = [];
+let asteroides = [];
+let projeteis = [];
+let explosoes = [];
+let escudos = [];
+
+let pontos = 0;
+let vidas = 3;
+let jogoAtivo = true;
+let velocidadeAsteroide = 2.5;
+
+let tempoEscudo = 0;
+let escudoAtivo = false;
+
+function setup() {
+  createCanvas(1503, 690);
+  nave = new Nave();
+  for (let i = 0; i < 50; i++) estrelas1.push(new Estrela(1));
+  for (let i = 0; i < 50; i++) estrelas2.push(new Estrela(2));
+  for (let i = 0; i < 4; i++) adicionarAsteroide();
+}
+
+function draw() {
+  background(10); // espaço escuro
+
+  // Camadas de estrelas para o efeito parallax
+  for (let s of estrelas1) { s.update(); s.show(); }
+  for (let s of estrelas2) { s.update(); s.show(); }
+
+  if (jogoAtivo) {
+    // Lógica principal do jogo
+    nave.update();
+    nave.show();
+    gerenciarObjetos();
+    gerenciarPowerUps();
+    gerenciarExplosoes();
+    checarNivel();
+
+  } else {
+    // Tela de Fim de Jogo
+    textAlign(CENTER, CENTER);
+    fill(255);
+    textSize(36);
+    text("FIM DE JOGO — pressione R para reiniciar", width / 2, height / 2);
+  }
+
+  desenharHUD();
+}
+
+function keyPressed() {
+  if (keyCode === UP_ARROW) {
+    nave.acelerar();
+  } 
+  if (key === ' ') { 
+    let projetil = new Projetil(nave.x + nave.tamanho, nave.y);
+    projeteis.push(projetil);
+  } 
+  if (key === 'R' || key === 'r') {
+    reiniciar();
+  }
+}
+
+function reiniciar() {
+  pontos = 0;
+  vidas = 3;
+  asteroides = [];
+  projeteis = [];
+  explosoes = [];
+  escudos = [];
+  velocidadeAsteroide = 2.5;
+  tempoEscudo = 0;
+  escudoAtivo = false;
+  for (let i = 0; i < 4; i++) adicionarAsteroide();
+  jogoAtivo = true;
+  nave = new Nave();
+}
+
+/* --- Funções de Gerenciamento --- */
+
+function gerenciarObjetos() {
+  // Usamos o for reverso para poder remover itens com splice
+  for (let i = projeteis.length - 1; i >= 0; i--) {
+    let p = projeteis[i];
+    p.update();
+    p.show();
+
+    let atingido = false;
+    for (let j = asteroides.length - 1; j >= 0; j--) {
+      let a = asteroides[j];
+      if (p.acertou(a)) {
+        explosoes.push(new Explosao(a.x, a.y)); // Cria explosão
+        asteroides.splice(j, 1);
+        projeteis.splice(i, 1);
+        pontos += 20;
+        atingido = true;
+        break;
+      }
+    }
+    if (!atingido && p.x > width) projeteis.splice(i, 1);
+  }
+
+  for (let i = asteroides.length - 1; i >= 0; i--) {
+    let a = asteroides[i];
+    a.update();
+    a.show();
+
+    if (a.colidiuCom(nave)) {
+      if (!escudoAtivo) {
+        vidas--;
+        explosoes.push(new Explosao(a.x, a.y));
+        asteroides.splice(i, 1);
+        if (vidas <= 0) jogoAtivo = false;
+        else adicionarAsteroide();
+      }
+    }
+
+    if (a.x < -a.r) {
+      asteroides.splice(i, 1);
+      pontos += 10;
+      adicionarAsteroide();
+    }
+  }
+}
+
+function gerenciarPowerUps() {
+  // Adiciona um escudo aleatoriamente
+  if (frameCount % 600 === 0) {
+    escudos.push(new Escudo());
+  }
+
+  for (let i = escudos.length - 1; i >= 0; i--) {
+    let e = escudos[i];
+    e.update();
+    e.show();
+    if (e.colidiuCom(nave)) {
+      escudoAtivo = true;
+      tempoEscudo = frameCount;
+      escudos.splice(i, 1);
+    }
+    if (e.x < -e.tamanho) {
+      escudos.splice(i, 1);
+    }
+  }
+  
+  // Desativa o escudo após 5 segundos (300 frames)
+  if (escudoAtivo && frameCount > tempoEscudo + 300) {
+    escudoAtivo = false;
+  }
+}
+
+function gerenciarExplosoes() {
+  for (let i = explosoes.length - 1; i >= 0; i--) {
+    explosoes[i].update();
+    explosoes[i].show();
+    if (explosoes[i].terminou()) {
+      explosoes.splice(i, 1);
+    }
+  }
+}
+
+function checarNivel() {
+  // Aumenta a velocidade dos asteroides a cada 200 pontos
+  if (pontos > 0 && pontos % 200 === 0) {
+    velocidadeAsteroide += 0.5;
+    pontos++; 
+  }
+}
+
+function adicionarAsteroide() {
+  asteroides.push(new Asteroide(velocidadeAsteroide));
+}
+
+function desenharHUD() {
+  fill(255);
+  textSize(16);
+  text("Pontos: " + pontos, 70, 30);
+  
+  for (let i = 0; i < vidas; i++) {
+    fill(255, 0, 0);
+    heart(width - 40 - (i * 30), 30, 20);
+  }
+}
+
+function heart(x, y, size) {
+  beginShape();
+  vertex(x, y);
+  bezierVertex(x - size / 2, y - size / 2, x - size, y + size / 3, x, y + size);
+  bezierVertex(x + size, y + size / 3, x + size / 2, y - size / 2, x, y);
+  endShape(CLOSE);
+}
+
+/* --- Classes --- */
+
+class Nave {
+  constructor() {
+    this.x = 100;
+    this.y = height / 2;
+    this.vy = 0;
+    this.tamanho = 30;
+  }
+  show() {
+    push();
+    translate(this.x, this.y);
+    noStroke();
+    if (escudoAtivo) {
+      fill(100, 255, 255, 150);
+      ellipse(0, 0, this.tamanho * 3, this.tamanho * 3);
+      fill(255, 100, 150); 
+    } else {
+      fill(255, 100, 150); 
+    }
+    beginShape();
+    vertex(0, -20);
+    vertex(40, 0);
+    vertex(0, 20);
+    vertex(10, 0);
+    endShape(CLOSE);
+    fill(255, 200, 0);
+    triangle(-20, -10, -30, 0, -20, 10);
+    pop();
+  }
+  update() {
+    this.vy += 0.6;
+    this.y += this.vy;
+    this.y = constrain(this.y, 20, height - 20);
+    if (this.y >= height - 20 || this.y <= 20) this.vy = 0;
+  }
+  acelerar() {
+    this.vy = -9;
+  }
+}
+
+class Projetil {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.r = 6;
+    this.speed = 7;
+  }
+  update() {
+    this.x += this.speed;
+  }
+  show() {
+    noStroke();
+    fill(255, 255, 0);
+    ellipse(this.x, this.y, this.r * 2);
+  }
+  acertou(asteroide) {
+    let d = dist(this.x, this.y, asteroide.x, asteroide.y);
+    return d < (this.r + asteroide.r);
+  }
+}
+
+class Estrela {
+  constructor(camada) {
+    this.x = random(width);
+    this.y = random(height);
+    this.t = random(1, 3);
+    this.camada = camada;
+    this.speed = (this.camada === 1) ? random(0.5, 1.5) : random(2, 3.5);
+  }
+  update() {
+    this.x -= this.speed;
+    if (this.x < 0) {
+      this.x = width;
+      this.y = random(height);
+    }
+  }
+  show() {
+    noStroke();
+    fill(255, this.camada === 1 ? 150 : 255);
+    ellipse(this.x, this.y, this.t, this.t);
+  }
+}
+
+class Asteroide {
+  constructor(speed) {
+    this.x = width + random(50, 200);
+    this.y = random(40, height - 40);
+    this.r = random(20, 50);
+    this.speed = speed;
+  }
+  update() {
+    this.x -= this.speed;
+  }
+  show() {
+    noStroke();
+    fill(150);
+    ellipse(this.x, this.y, this.r * 2, this.r * 2);
+  }
+  colidiuCom(nave) {
+    let d = dist(this.x, this.y, nave.x, nave.y);
+    return d < (this.r + nave.tamanho * 0.8);
+  }
+}
+
+class Escudo {
+  constructor() {
+    this.x = width + random(100, 400);
+    this.y = random(50, height - 50);
+    this.tamanho = 20;
+    this.speed = 3;
+  }
+  update() {
+    this.x -= this.speed;
+  }
+  show() {
+    noFill();
+    stroke(0, 255, 0);
+    strokeWeight(3);
+    ellipse(this.x, this.y, this.tamanho * 2);
+    noStroke();
+    fill(0, 255, 0, 80);
+    ellipse(this.x, this.y, this.tamanho * 2, this.tamanho * 2);
+  }
+  colidiuCom(nave) {
+    let d = dist(this.x, this.y, nave.x, nave.y);
+    return d < (this.tamanho + nave.tamanho * 0.8);
+  }
+}
+
+class Explosao {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.particulas = [];
+    for (let i = 0; i < 15; i++) {
+      this.particulas.push(new Particula(this.x, this.y));
+    }
+  }
+  update() {
+    for (let p of this.particulas) {
+      p.update();
+    }
+  }
+  show() {
+    for (let p of this.particulas) {
+      p.show();
+    }
+  }
+  terminou() {
+    return this.particulas.every(p => p.alpha <= 0);
+  }
+}
+
+class Particula {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.vx = random(-2, 2);
+    this.vy = random(-2, 2);
+    this.r = random(5, 15);
+    this.alpha = 255;
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.alpha -= 5;
+    this.r *= 0.95;
+  }
+  show() {
+    noStroke();
+    fill(255, this.alpha);
+    ellipse(this.x, this.y, this.r);
+  }
+}
+  </script>
+</body>
+</html>
